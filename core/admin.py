@@ -1,3 +1,6 @@
 from django.contrib import admin
+from .models import Chore, ChoreLog, Roommate
 
-# Register your models here.
+admin.site.register(Roommate)
+admin.site.register(Chore)
+admin.site.register(ChoreLog)
