@@ -49,6 +49,7 @@ staticfiles/
 *.swp
 *.swo
 *~
+~$*
 
 # Operating System
 .DS_Store
