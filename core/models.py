@@ -1,4 +1,5 @@
-from datetime import timedelta
+from datetime import datetime, time, timedelta
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
@@ -45,6 +46,41 @@ class Chore(models.Model):
 
     def __str__(self):
         return self.title
+
+    def get_status(self, as_of=None):
+        """
+        Returns chore urgency status:
+        - 'upcoming': due in more than 24 hours
+        - 'due_today': due within 24 hours
+        - 'overdue': past the deadline
+        """
+        if not self.next_due_date:
+            return "upcoming"
+
+        now = as_of or timezone.now()
+        if timezone.is_naive(now) and settings.USE_TZ:
+            now = timezone.make_aware(now)
+
+        if isinstance(self.next_due_date, datetime):
+            deadline = self.next_due_date
+            if timezone.is_naive(deadline) and settings.USE_TZ:
+                deadline = timezone.make_aware(deadline)
+        else:
+            # For a date, deadline is the end of the due date (start of the following day)
+            deadline = datetime.combine(self.next_due_date + timedelta(days=1), time.min)
+            if settings.USE_TZ:
+                deadline = timezone.make_aware(deadline)
+
+        if now > deadline:
+            return "overdue"
+        elif deadline - now <= timedelta(hours=24):
+            return "due_today"
+        else:
+            return "upcoming"
+
+    @property
+    def status(self):
+        return self.get_status()
 
     def get_next_assignee(self):
         """

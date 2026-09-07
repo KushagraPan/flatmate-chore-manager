@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from io import StringIO
 from django.conf import settings
 from django.core.management import call_command
@@ -741,6 +741,152 @@ class ChoreMarkDoneViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "✓ Mark Done")
         self.assertContains(response, reverse("chore_mark_done", args=[self.chore.id]))
+
+
+class ChoreStatusHierarchyTests(TestCase):
+    def test_status_boundary_more_than_24_hours_is_upcoming(self):
+        now = timezone.now()
+        chore_25h = Chore(next_due_date=now + timedelta(hours=25))
+        self.assertEqual(chore_25h.status, "upcoming")
+        self.assertEqual(chore_25h.get_status(as_of=now), "upcoming")
+
+    def test_status_boundary_exactly_24_hours_is_due_today(self):
+        now = timezone.now()
+        chore_24h = Chore(next_due_date=now + timedelta(hours=24))
+        self.assertEqual(chore_24h.status, "due_today")
+        self.assertEqual(chore_24h.get_status(as_of=now), "due_today")
+
+    def test_status_boundary_within_24_hours_is_due_today(self):
+        now = timezone.now()
+        chore_23h = Chore(next_due_date=now + timedelta(hours=23))
+        self.assertEqual(chore_23h.status, "due_today")
+        self.assertEqual(chore_23h.get_status(as_of=now), "due_today")
+
+        chore_1h = Chore(next_due_date=now + timedelta(hours=1))
+        self.assertEqual(chore_1h.status, "due_today")
+        self.assertEqual(chore_1h.get_status(as_of=now), "due_today")
+
+    def test_status_boundary_past_deadline_is_overdue(self):
+        now = timezone.now()
+        chore_past_sec = Chore(next_due_date=now - timedelta(seconds=1))
+        self.assertEqual(chore_past_sec.status, "overdue")
+        self.assertEqual(chore_past_sec.get_status(as_of=now), "overdue")
+
+        chore_past_hours = Chore(next_due_date=now - timedelta(hours=5))
+        self.assertEqual(chore_past_hours.status, "overdue")
+        self.assertEqual(chore_past_hours.get_status(as_of=now), "overdue")
+
+    def test_status_with_persisted_date_objects(self):
+        today = timezone.now().date()
+        chore_today = Chore.objects.create(title="Today Task", next_due_date=today)
+        self.assertEqual(chore_today.status, "due_today")
+
+        chore_future = Chore.objects.create(title="Future Task", next_due_date=today + timedelta(days=2))
+        self.assertEqual(chore_future.status, "upcoming")
+
+        chore_overdue = Chore.objects.create(title="Overdue Task", next_due_date=today - timedelta(days=1))
+        self.assertEqual(chore_overdue.status, "overdue")
+
+    def test_status_fallback_when_no_due_date(self):
+        chore = Chore(title="No date")
+        chore.next_due_date = None
+        self.assertEqual(chore.status, "upcoming")
+
+
+class DashboardStatusBadgesAndNagBannerTests(TestCase):
+    def setUp(self):
+        self.alex = Roommate.objects.create(name="Alex", color_code="#3B82F6", order_index=0, is_active=True)
+        self.sam = Roommate.objects.create(name="Sam", color_code="#10B981", order_index=1, is_active=True)
+        session = self.client.session
+        session["active_roommate_id"] = self.alex.id
+        session.save()
+        self.today = timezone.now().date()
+
+    def test_dashboard_renders_color_coded_badges(self):
+        Chore.objects.create(
+            title="Overdue Chore",
+            next_due_date=self.today - timedelta(days=2),
+            current_assignee=self.alex,
+        )
+        Chore.objects.create(
+            title="Due Today Chore",
+            next_due_date=self.today,
+            current_assignee=self.alex,
+        )
+        Chore.objects.create(
+            title="Upcoming Chore",
+            next_due_date=self.today + timedelta(days=3),
+            current_assignee=self.sam,
+        )
+
+        response = self.client.get(reverse("index"))
+        self.assertEqual(response.status_code, 200)
+
+        # Assert all 3 status badge texts are present
+        self.assertContains(response, "Overdue")
+        self.assertContains(response, "Due Today")
+        self.assertContains(response, "Upcoming")
+
+        # Assert color classes for badges are present
+        self.assertContains(response, "bg-red-100 text-red-800")
+        self.assertContains(response, "bg-amber-100 text-amber-800")
+        self.assertContains(response, "bg-emerald-100 text-emerald-800")
+
+    def test_nag_banner_appears_when_overdue_chores_exist(self):
+        Chore.objects.create(
+            title="Old Trash",
+            next_due_date=self.today - timedelta(days=1),
+            current_assignee=self.alex,
+        )
+
+        # Visible on dashboard
+        response_index = self.client.get(reverse("index"))
+        self.assertEqual(response_index.status_code, 200)
+        self.assertContains(response_index, "id=\"overdue-nag-banner\"")
+        self.assertContains(response_index, "Overdue Chores Warning")
+
+        # Visible on other pages (e.g. chore create page)
+        response_create = self.client.get(reverse("chore_create"))
+        self.assertEqual(response_create.status_code, 200)
+        self.assertContains(response_create, "id=\"overdue-nag-banner\"")
+        self.assertContains(response_create, "Overdue Chores Warning")
+
+    def test_nag_banner_hidden_when_no_overdue_chores_exist(self):
+        Chore.objects.create(
+            title="Today chore",
+            next_due_date=self.today,
+            current_assignee=self.alex,
+        )
+        Chore.objects.create(
+            title="Future chore",
+            next_due_date=self.today + timedelta(days=5),
+            current_assignee=self.sam,
+        )
+
+        # Hidden on dashboard
+        response_index = self.client.get(reverse("index"))
+        self.assertEqual(response_index.status_code, 200)
+        self.assertNotContains(response_index, "id=\"overdue-nag-banner\"")
+        self.assertNotContains(response_index, "Overdue Chores Warning")
+
+        # Hidden on other pages
+        response_create = self.client.get(reverse("chore_create"))
+        self.assertEqual(response_create.status_code, 200)
+        self.assertNotContains(response_create, "id=\"overdue-nag-banner\"")
+
+    def test_archived_overdue_chore_does_not_trigger_nag_banner(self):
+        Chore.objects.create(
+            title="Retired Past Chore",
+            next_due_date=self.today - timedelta(days=3),
+            current_assignee=self.alex,
+            is_archived=True,
+        )
+
+        response = self.client.get(reverse("index"))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "id=\"overdue-nag-banner\"")
+        self.assertNotContains(response, "Overdue Chores Warning")
+
 
 
 
