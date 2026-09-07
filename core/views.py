@@ -1,10 +1,37 @@
 from django.shortcuts import redirect, render
-from core.models import Roommate
+from core.models import Chore, Roommate
 
 
 def index(request):
-    """Placeholder home view displaying profile and navigation."""
-    return render(request, "core/index.html")
+    """
+    Main household dashboard displaying:
+    - 'my_chores': chores assigned to the active roommate
+    - 'all_chores': all chores across the household
+    """
+    active_roommate = getattr(request, "active_roommate", None)
+    if not active_roommate:
+        active_id = request.session.get("active_roommate_id")
+        active_roommate = (
+            Roommate.objects.filter(id=active_id, is_active=True).first()
+            if active_id
+            else None
+        )
+
+    all_chores = Chore.objects.select_related("current_assignee").all()
+    my_chores = (
+        all_chores.filter(current_assignee=active_roommate)
+        if active_roommate
+        else Chore.objects.none()
+    )
+
+    return render(
+        request,
+        "core/index.html",
+        {
+            "my_chores": my_chores,
+            "all_chores": all_chores,
+        },
+    )
 
 
 def select_roommate(request):

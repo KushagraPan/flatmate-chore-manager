@@ -284,3 +284,94 @@ class ProfileSwitcherTests(TestCase):
         self.assertContains(response, "Switch to Sam")
         self.assertNotContains(response, "Switch to Taylor")
 
+
+class DashboardViewTests(TestCase):
+    def setUp(self):
+        self.alex = Roommate.objects.create(name="Alex", color_code="#3B82F6", order_index=0, is_active=True)
+        self.sam = Roommate.objects.create(name="Sam", color_code="#10B981", order_index=1, is_active=True)
+
+        today = date.today()
+        self.chore_alex = Chore.objects.create(
+            title="Clean Microwave",
+            description="Wipe down the inside of the microwave.",
+            recurrence_type=Chore.RecurrenceType.DAILY,
+            next_due_date=today,
+            current_assignee=self.alex,
+        )
+        self.chore_sam = Chore.objects.create(
+            title="Mop Kitchen",
+            description="Mop the floor with hot water and soap.",
+            recurrence_type=Chore.RecurrenceType.WEEKLY,
+            next_due_date=today + timedelta(days=2),
+            current_assignee=self.sam,
+        )
+        self.chore_unassigned = Chore.objects.create(
+            title="Recycling Bins",
+            description="Take the blue bins to the street.",
+            recurrence_type=Chore.RecurrenceType.BIWEEKLY,
+            next_due_date=today + timedelta(days=4),
+            current_assignee=None,
+        )
+
+    def _set_active_roommate(self, roommate):
+        session = self.client.session
+        session["active_roommate_id"] = roommate.id
+        session.save()
+
+    def test_dashboard_renders_and_segregates_chores_for_alex(self):
+        self._set_active_roommate(self.alex)
+        response = self.client.get(reverse("index"))
+        self.assertEqual(response.status_code, 200)
+
+        # Context assertions
+        self.assertEqual(list(response.context["my_chores"]), [self.chore_alex])
+        self.assertEqual(
+            list(response.context["all_chores"]),
+            [self.chore_alex, self.chore_sam, self.chore_unassigned],
+        )
+
+        # Content assertions
+        self.assertContains(response, "My Chores")
+        self.assertContains(response, "All Household Chores")
+        self.assertContains(response, "Clean Microwave")
+        self.assertContains(response, "Mop Kitchen")
+        self.assertContains(response, "Recycling Bins")
+        self.assertContains(response, "(You)")
+
+    def test_dashboard_switches_my_chores_when_profile_changes(self):
+        # View as Sam
+        self._set_active_roommate(self.sam)
+        response = self.client.get(reverse("index"))
+        self.assertEqual(response.status_code, 200)
+
+        self.assertEqual(list(response.context["my_chores"]), [self.chore_sam])
+        self.assertNotIn(self.chore_alex, response.context["my_chores"])
+
+    def test_dashboard_empty_states(self):
+        # Delete all chores
+        Chore.objects.all().delete()
+        self._set_active_roommate(self.alex)
+
+        response = self.client.get(reverse("index"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(response.context["my_chores"]), [])
+        self.assertEqual(list(response.context["all_chores"]), [])
+
+        self.assertContains(response, "You're all caught up!")
+        self.assertContains(response, "No chores created yet")
+
+    def test_dashboard_displays_assignee_and_recurrence_info(self):
+        self._set_active_roommate(self.alex)
+        response = self.client.get(reverse("index"))
+        self.assertEqual(response.status_code, 200)
+
+        # Recurrence labels
+        self.assertContains(response, "Daily")
+        self.assertContains(response, "Weekly")
+        self.assertContains(response, "Bi-weekly")
+
+        # Assignee names and fallback
+        self.assertContains(response, "Alex")
+        self.assertContains(response, "Sam")
+        self.assertContains(response, "Unassigned")
+

@@ -1,25 +1,159 @@
 ﻿{% extends "core/base.html" %}
 
+{% block title %}Dashboard - Flatmate Chore Manager{% endblock %}
+
 {% block content %}
-<div class="bg-white shadow-sm rounded-xl border border-slate-200 p-8 text-center max-w-2xl mx-auto my-12">
-    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4" style="background-color: {{ active_roommate.color_code|default:'#E2E8F0' }}20;">
-        <span class="text-3xl">👋</span>
+<div class="space-y-10">
+    <!-- Welcome Header -->
+    <div class="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+                <div class="flex items-center space-x-3 mb-1">
+                    {% if active_roommate %}
+                        <span class="w-3.5 h-3.5 rounded-full inline-block shrink-0 shadow-sm" style="background-color: {{ active_roommate.color_code }};"></span>
+                    {% endif %}
+                    <h1 class="text-2xl font-bold text-slate-900 tracking-tight">
+                        {% if active_roommate %}
+                            Welcome back, {{ active_roommate.name }}!
+                        {% else %}
+                            Household Dashboard
+                        {% endif %}
+                    </h1>
+                </div>
+                <p class="text-sm text-slate-500">
+                    Here is an overview of your responsibilities and the household chore rotation.
+                </p>
+            </div>
+            <div class="flex items-center space-x-3 text-xs text-slate-500 bg-slate-50 border border-slate-200 py-2 px-4 rounded-xl">
+                <div>
+                    <span class="font-bold text-slate-800 text-sm block">{{ my_chores|length }}</span>
+                    <span>My Tasks</span>
+                </div>
+                <div class="h-6 w-px bg-slate-200"></div>
+                <div>
+                    <span class="font-bold text-slate-800 text-sm block">{{ all_chores|length }}</span>
+                    <span>Total Chores</span>
+                </div>
+            </div>
+        </div>
     </div>
-    {% if active_roommate %}
-        <h1 class="text-2xl font-bold text-slate-900 mb-2">
-            Welcome back, <span style="color: {{ active_roommate.color_code }};">{{ active_roommate.name }}</span>!
-        </h1>
-        <p class="text-slate-600 text-sm mb-6">
-            You are currently viewing the household as <strong>{{ active_roommate.name }}</strong>. Use the profile switcher in the top navigation to switch identities anytime without logging in.
-        </p>
-    {% else %}
-        <h1 class="text-2xl font-bold text-slate-900 mb-2">Welcome to Flatmate Chore Manager</h1>
-        <p class="text-slate-600 text-sm mb-6">
-            No active roommates were found in the database. Run the database seed command to set up your household:
-        </p>
-        <code class="bg-slate-100 text-slate-800 px-3 py-1.5 rounded text-sm font-mono inline-block">
-            uv run python manage.py seed_data
-        </code>
-    {% endif %}
+
+    <!-- Section 1: My Chores -->
+    <section>
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center space-x-2">
+                <h2 class="text-lg font-bold text-slate-900">My Chores</h2>
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800">
+                    {{ my_chores|length }}
+                </span>
+            </div>
+        </div>
+
+        {% if my_chores %}
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {% for chore in my_chores %}
+                    <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-start justify-between gap-2 mb-2">
+                                <h3 class="font-semibold text-base text-slate-900 leading-snug">
+                                    {{ chore.title }}
+                                </h3>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 uppercase tracking-wider shrink-0">
+                                    {{ chore.get_recurrence_type_display }}
+                                </span>
+                            </div>
+                            {% if chore.description %}
+                                <p class="text-sm text-slate-600 mb-4 line-clamp-2">
+                                    {{ chore.description }}
+                                </p>
+                            {% endif %}
+                        </div>
+                        <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 mt-2">
+                            <span class="flex items-center space-x-1.5">
+                                <span>📅</span>
+                                <span>Due: <strong>{{ chore.next_due_date }}</strong></span>
+                            </span>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="bg-white rounded-xl border border-dashed border-slate-300 p-8 text-center">
+                <div class="text-3xl mb-2">🎉</div>
+                <h3 class="font-semibold text-slate-800 mb-1">You're all caught up!</h3>
+                <p class="text-sm text-slate-500">No chores currently assigned to you right now.</p>
+            </div>
+        {% endif %}
+    </section>
+
+    <!-- Section 2: All Household Chores -->
+    <section>
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center space-x-2">
+                <h2 class="text-lg font-bold text-slate-900">All Household Chores</h2>
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
+                    {{ all_chores|length }}
+                </span>
+            </div>
+        </div>
+
+        {% if all_chores %}
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-slate-200 text-left text-sm">
+                        <thead class="bg-slate-50 text-slate-500 uppercase tracking-wider text-xs">
+                            <tr>
+                                <th scope="col" class="px-6 py-3.5 font-semibold">Chore</th>
+                                <th scope="col" class="px-6 py-3.5 font-semibold">Frequency</th>
+                                <th scope="col" class="px-6 py-3.5 font-semibold">Next Due Date</th>
+                                <th scope="col" class="px-6 py-3.5 font-semibold">Current Assignee</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-200 bg-white">
+                            {% for chore in all_chores %}
+                                <tr class="hover:bg-slate-50/70 transition">
+                                    <td class="px-6 py-4">
+                                        <div class="font-semibold text-slate-900">{{ chore.title }}</div>
+                                        {% if chore.description %}
+                                            <div class="text-xs text-slate-500 truncate max-w-md">{{ chore.description }}</div>
+                                        {% endif %}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700">
+                                            {{ chore.get_recurrence_type_display }}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-slate-700 font-medium">
+                                        {{ chore.next_due_date }}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        {% if chore.current_assignee %}
+                                            <span class="inline-flex items-center space-x-2 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-full text-xs font-medium text-slate-800">
+                                                <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: {{ chore.current_assignee.color_code }};"></span>
+                                                <span>{{ chore.current_assignee.name }}</span>
+                                                {% if active_roommate and chore.current_assignee.id == active_roommate.id %}
+                                                    <span class="text-[10px] text-indigo-600 font-bold uppercase tracking-wider ml-1">(You)</span>
+                                                {% endif %}
+                                            </span>
+                                        {% else %}
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-400 italic">
+                                                Unassigned
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        {% else %}
+            <div class="bg-white rounded-xl border border-dashed border-slate-300 p-8 text-center">
+                <div class="text-3xl mb-2">📋</div>
+                <h3 class="font-semibold text-slate-800 mb-1">No chores created yet</h3>
+                <p class="text-sm text-slate-500">Run the seed command or add chores to get started.</p>
+            </div>
+        {% endif %}
+    </section>
 </div>
 {% endblock %}
