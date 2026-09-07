@@ -888,5 +888,99 @@ class DashboardStatusBadgesAndNagBannerTests(TestCase):
         self.assertNotContains(response, "Overdue Chores Warning")
 
 
+class HouseholdActivityFeedTests(TestCase):
+    def setUp(self):
+        self.alex = Roommate.objects.create(name="Alex", color_code="#3B82F6", order_index=0, is_active=True)
+        self.sam = Roommate.objects.create(name="Sam", color_code="#10B981", order_index=1, is_active=True)
+        session = self.client.session
+        session["active_roommate_id"] = self.alex.id
+        session.save()
+        self.chore = Chore.objects.create(
+            title="Clean kitchen counters",
+            recurrence_type=Chore.RecurrenceType.DAILY,
+            next_due_date=timezone.now().date(),
+            current_assignee=self.alex,
+        )
+
+    def test_activity_feed_ordering_most_recent_first(self):
+        now = timezone.now()
+        log1 = ChoreLog.objects.create(chore=self.chore, completed_by=self.alex)
+        log1.completed_at = now - timedelta(hours=3)
+        log1.save()
+
+        log2 = ChoreLog.objects.create(chore=self.chore, completed_by=self.sam)
+        log2.completed_at = now - timedelta(hours=1)
+        log2.save()
+
+        log3 = ChoreLog.objects.create(chore=self.chore, completed_by=self.alex)
+        log3.completed_at = now - timedelta(hours=2)
+        log3.save()
+
+        response = self.client.get(reverse("index"))
+        self.assertEqual(response.status_code, 200)
+
+        feed = list(response.context["activity_feed"])
+        self.assertEqual(len(feed), 3)
+        # Expected order: log2 (1h ago), log3 (2h ago), log1 (3h ago)
+        self.assertEqual(feed, [log2, log3, log1])
+
+    def test_activity_feed_output_limit_10(self):
+        now = timezone.now()
+        logs = []
+        for i in range(15):
+            log = ChoreLog.objects.create(chore=self.chore, completed_by=self.alex)
+            log.completed_at = now - timedelta(minutes=i * 10)
+            log.save()
+            logs.append(log)
+
+        response = self.client.get(reverse("index"))
+        self.assertEqual(response.status_code, 200)
+
+        feed = list(response.context["activity_feed"])
+        self.assertEqual(len(feed), 10)
+        # Verify the 10 most recent (indices 0 to 9) are in the feed
+        self.assertEqual(feed, logs[:10])
+        # Verify older logs are excluded
+        for older_log in logs[10:]:
+            self.assertNotIn(older_log, feed)
+
+    def test_activity_feed_renders_details_and_relative_timestamps(self):
+        now = timezone.now()
+        log = ChoreLog.objects.create(chore=self.chore, completed_by=self.alex)
+        log.completed_at = now - timedelta(hours=2)
+        log.save()
+
+        response = self.client.get(reverse("index"))
+        self.assertEqual(response.status_code, 200)
+
+        self.assertContains(response, "Alex")
+        self.assertContains(response, "completed")
+        self.assertContains(response, "Clean kitchen counters")
+        # Django humanize naturaltime formats with non-breaking space ("2\xa0hours ago")
+        content = response.content.decode("utf-8")
+        self.assertTrue("2 hours ago" in content or "2\xa0hours ago" in content)
+
+    def test_activity_feed_renders_past_day_timestamp(self):
+        now = timezone.now()
+        log = ChoreLog.objects.create(chore=self.chore, completed_by=self.alex)
+        log.completed_at = now - timedelta(days=1)
+        log.save()
+
+        response = self.client.get(reverse("index"))
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode("utf-8")
+        self.assertTrue("1 day ago" in content or "1\xa0day ago" in content)
+
+    def test_activity_feed_friendly_empty_state(self):
+        ChoreLog.objects.all().delete()
+        response = self.client.get(reverse("index"))
+        self.assertEqual(response.status_code, 200)
+
+        self.assertEqual(len(response.context["activity_feed"]), 0)
+        self.assertContains(response, "No activity logged yet")
+        self.assertContains(response, "When roommates complete chores, their accomplishments will show up here.")
+
+
+
 
 

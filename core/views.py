@@ -1,6 +1,6 @@
 from django.shortcuts import get_object_or_404, redirect, render
 from core.forms import ChoreForm
-from core.models import Chore, Roommate
+from core.models import Chore, ChoreLog, Roommate
 
 
 def index(request):
@@ -8,6 +8,7 @@ def index(request):
     Main household dashboard displaying:
     - 'my_chores': active chores assigned to the active roommate
     - 'all_chores': active chores across the household
+    - 'activity_feed': recent chore completion logs (up to 10)
     """
     active_roommate = getattr(request, "active_roommate", None)
     if not active_roommate:
@@ -24,6 +25,9 @@ def index(request):
         if active_roommate
         else Chore.objects.none()
     )
+    activity_feed = ChoreLog.objects.select_related(
+        "chore", "completed_by"
+    ).order_by("-completed_at", "-id")[:10]
 
     return render(
         request,
@@ -31,6 +35,7 @@ def index(request):
         {
             "my_chores": my_chores,
             "all_chores": all_chores,
+            "activity_feed": activity_feed,
         },
     )
 
