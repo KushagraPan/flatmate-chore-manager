@@ -1,4 +1,4 @@
-﻿{% extends "core/base.html" %}
+{% extends "core/base.html" %}
 
 {% block title %}Dashboard - Flatmate Chore Manager{% endblock %}
 
@@ -73,18 +73,26 @@
                                 </p>
                             {% endif %}
                         </div>
-                        <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 mt-2">
-                            <span class="flex items-center space-x-1.5">
-                                <span>📅</span>
-                                <span>Due: <strong>{{ chore.next_due_date }}</strong></span>
-                            </span>
-                            <div class="flex items-center space-x-2.5">
-                                <a href="{% url 'chore_edit' chore.id %}" class="text-indigo-600 hover:text-indigo-800 font-medium">Edit</a>
-                                <form method="post" action="{% url 'chore_archive' chore.id %}" class="inline" onsubmit="return confirm('Archive this chore? It will stop appearing in the rotation.');">
-                                    {% csrf_token %}
-                                    <button type="submit" class="text-slate-400 hover:text-red-600 font-medium cursor-pointer">Archive</button>
-                                </form>
+                        <div class="pt-4 border-t border-slate-100 space-y-3 mt-2">
+                            <div class="flex items-center justify-between text-xs text-slate-500">
+                                <span class="flex items-center space-x-1.5">
+                                    <span>📅</span>
+                                    <span>Due: <strong>{{ chore.next_due_date }}</strong></span>
+                                </span>
+                                <div class="flex items-center space-x-2.5">
+                                    <a href="{% url 'chore_edit' chore.id %}" class="text-indigo-600 hover:text-indigo-800 font-medium">Edit</a>
+                                    <form method="post" action="{% url 'chore_archive' chore.id %}" class="inline" onsubmit="return confirm('Archive this chore? It will stop appearing in the rotation.');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="text-slate-400 hover:text-red-600 font-medium cursor-pointer">Archive</button>
+                                    </form>
+                                </div>
                             </div>
+                            <form method="post" action="{% url 'chore_mark_done' chore.id %}" class="w-full">
+                                {% csrf_token %}
+                                <button type="submit" class="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm hover:shadow transition cursor-pointer">
+                                    ✓ Mark Done
+                                </button>
+                            </form>
                         </div>
                     </div>
                 {% endfor %}
@@ -158,6 +166,10 @@
                                         {% endif %}
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-right text-xs font-medium space-x-3">
+                                        <form method="post" action="{% url 'chore_mark_done' chore.id %}" class="inline">
+                                            {% csrf_token %}
+                                            <button type="submit" class="text-emerald-600 hover:text-emerald-800 font-semibold cursor-pointer">Mark Done</button>
+                                        </form>
                                         <a href="{% url 'chore_edit' chore.id %}" class="text-indigo-600 hover:text-indigo-900 font-medium">Edit</a>
                                         <form method="post" action="{% url 'chore_archive' chore.id %}" class="inline" onsubmit="return confirm('Archive this chore? It will stop appearing in the rotation.');">
                                             {% csrf_token %}

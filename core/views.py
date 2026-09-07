@@ -88,6 +88,26 @@ def chore_archive(request, chore_id):
     return redirect("index")
 
 
+def chore_mark_done(request, chore_id):
+    """
+    Mark a chore as done:
+    1. Records ChoreLog with active_roommate.
+    2. Advances rotation to the next active roommate.
+    3. Recalculates next_due_date.
+    """
+    chore = get_object_or_404(Chore, id=chore_id)
+    if request.method == "POST":
+        active_roommate = getattr(request, "active_roommate", None)
+        if not active_roommate:
+            active_id = request.session.get("active_roommate_id")
+            if active_id:
+                active_roommate = Roommate.objects.filter(id=active_id, is_active=True).first()
+
+        chore.mark_done(completed_by=active_roommate)
+
+    return redirect("index")
+
+
 def select_roommate(request):
     """
     Explicit 'Who are you?' picker page.

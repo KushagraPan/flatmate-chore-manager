@@ -507,3 +507,240 @@ class ChoreCRUDViewTests(TestCase):
         self.assertNotContains(dashboard_res, "Old temporary task")
 
 
+class RoundRobinRotationEngineTests(TestCase):
+    def setUp(self):
+        self.alex = Roommate.objects.create(name="Alex", order_index=0, is_active=True)
+        self.sam = Roommate.objects.create(name="Sam", order_index=1, is_active=True)
+        self.jordan = Roommate.objects.create(name="Jordan", order_index=2, is_active=True)
+        self.today = timezone.now().date()
+
+    def test_full_rotation_cycle_and_wraparound(self):
+        chore = Chore.objects.create(
+            title="Take out trash",
+            recurrence_type=Chore.RecurrenceType.WEEKLY,
+            next_due_date=self.today - timedelta(days=10),  # Overdue chore
+            current_assignee=self.alex,
+        )
+
+        # 1st completion: Alex completes -> advances to Sam, due in today + 7 days
+        chore.mark_done(completed_by=self.alex)
+        self.assertEqual(chore.current_assignee, self.sam)
+        self.assertEqual(chore.next_due_date, self.today + timedelta(days=7))
+
+        # 2nd completion: Sam completes -> advances to Jordan, due in today + 7 days
+        chore.mark_done(completed_by=self.sam)
+        self.assertEqual(chore.current_assignee, self.jordan)
+        self.assertEqual(chore.next_due_date, self.today + timedelta(days=7))
+
+        # 3rd completion: Jordan completes -> wraps around to Alex, due in today + 7 days
+        chore.mark_done(completed_by=self.jordan)
+        self.assertEqual(chore.current_assignee, self.alex)
+        self.assertEqual(chore.next_due_date, self.today + timedelta(days=7))
+
+    def test_chore_log_creation_on_mark_done(self):
+        chore = Chore.objects.create(
+            title="Clean bathroom",
+            recurrence_type=Chore.RecurrenceType.DAILY,
+            next_due_date=self.today,
+            current_assignee=self.alex,
+        )
+        before = timezone.now()
+        log = chore.mark_done(completed_by=self.alex)
+        after = timezone.now()
+
+        self.assertIsNotNone(log)
+        self.assertEqual(log.chore, chore)
+        self.assertEqual(log.completed_by, self.alex)
+        self.assertTrue(before <= log.completed_at <= after)
+        self.assertEqual(ChoreLog.objects.filter(chore=chore).count(), 1)
+
+    def test_due_date_math_daily(self):
+        chore = Chore.objects.create(
+            title="Wipe counters",
+            recurrence_type=Chore.RecurrenceType.DAILY,
+            next_due_date=self.today - timedelta(days=5),
+            current_assignee=self.alex,
+        )
+        chore.mark_done(completed_by=self.alex)
+        self.assertEqual(chore.next_due_date, self.today + timedelta(days=1))
+
+    def test_due_date_math_weekly(self):
+        chore = Chore.objects.create(
+            title="Mop kitchen floor",
+            recurrence_type=Chore.RecurrenceType.WEEKLY,
+            next_due_date=self.today - timedelta(days=14),
+            current_assignee=self.alex,
+        )
+        chore.mark_done(completed_by=self.alex)
+        self.assertEqual(chore.next_due_date, self.today + timedelta(days=7))
+
+    def test_due_date_math_biweekly(self):
+        chore = Chore.objects.create(
+            title="Clean fridge",
+            recurrence_type=Chore.RecurrenceType.BIWEEKLY,
+            next_due_date=self.today - timedelta(days=30),
+            current_assignee=self.alex,
+        )
+        chore.mark_done(completed_by=self.alex)
+        self.assertEqual(chore.next_due_date, self.today + timedelta(days=14))
+
+    def test_due_date_math_monthly(self):
+        chore = Chore.objects.create(
+            title="Deep clean oven",
+            recurrence_type=Chore.RecurrenceType.MONTHLY,
+            next_due_date=self.today - timedelta(days=60),
+            current_assignee=self.alex,
+        )
+        chore.mark_done(completed_by=self.alex)
+        self.assertEqual(chore.next_due_date, self.today + timedelta(days=30))
+
+    def test_overdue_chore_due_date_calculated_from_today_not_past_date(self):
+        # Even if chore was due 100 days ago, next due date is today + interval
+        chore = Chore.objects.create(
+            title="Wash windows",
+            recurrence_type=Chore.RecurrenceType.WEEKLY,
+            next_due_date=self.today - timedelta(days=100),
+            current_assignee=self.alex,
+        )
+        chore.mark_done(completed_by=self.alex)
+        self.assertEqual(chore.next_due_date, self.today + timedelta(days=7))
+
+    def test_edge_case_single_active_roommate(self):
+        # Only Alex is active
+        self.sam.is_active = False
+        self.sam.save()
+        self.jordan.is_active = False
+        self.jordan.save()
+
+        chore = Chore.objects.create(
+            title="Solo chore",
+            recurrence_type=Chore.RecurrenceType.DAILY,
+            next_due_date=date(2026, 9, 1),
+            current_assignee=self.alex,
+        )
+        chore.mark_done(completed_by=self.alex)
+        self.assertEqual(chore.current_assignee, self.alex)
+
+        # Mark done again - assignee stays Alex
+        chore.mark_done(completed_by=self.alex)
+        self.assertEqual(chore.current_assignee, self.alex)
+
+    def test_edge_case_current_assignee_becomes_inactive(self):
+        # Sam (order_index=1) is deactivated
+        self.sam.is_active = False
+        self.sam.save()
+
+        # Chore was assigned to Sam before deactivation
+        chore = Chore.objects.create(
+            title="Dishes",
+            recurrence_type=Chore.RecurrenceType.DAILY,
+            next_due_date=date(2026, 9, 1),
+            current_assignee=self.sam,
+        )
+
+        # Should skip inactive Sam and assign to Jordan (order_index=2)
+        chore.mark_done(completed_by=self.alex)
+        self.assertEqual(chore.current_assignee, self.jordan)
+
+    def test_edge_case_inactive_assignee_past_end_wraps_around(self):
+        # Jordan (order_index=2) is deactivated
+        self.jordan.is_active = False
+        self.jordan.save()
+
+        # Chore was assigned to Jordan before deactivation
+        chore = Chore.objects.create(
+            title="Dishes",
+            recurrence_type=Chore.RecurrenceType.DAILY,
+            next_due_date=date(2026, 9, 1),
+            current_assignee=self.jordan,
+        )
+
+        # Jordan was at the end of order, so it should wrap to Alex (order_index=0)
+        chore.mark_done(completed_by=self.alex)
+        self.assertEqual(chore.current_assignee, self.alex)
+
+    def test_edge_case_no_active_roommates(self):
+        Roommate.objects.update(is_active=False)
+
+        chore = Chore.objects.create(
+            title="Orphaned task",
+            recurrence_type=Chore.RecurrenceType.DAILY,
+            next_due_date=date(2026, 9, 1),
+            current_assignee=None,
+        )
+
+        # Must not crash, leaves assignee as None
+        chore.mark_done(completed_by=None)
+        self.assertIsNone(chore.current_assignee)
+        self.assertEqual(chore.next_due_date, self.today + timedelta(days=1))
+
+    def test_unassigned_chore_rotates_to_first_active_roommate(self):
+        chore = Chore.objects.create(
+            title="New unassigned chore",
+            recurrence_type=Chore.RecurrenceType.WEEKLY,
+            next_due_date=date(2026, 9, 1),
+            current_assignee=None,
+        )
+        self.assertEqual(chore.get_next_assignee(), self.alex)
+
+
+class ChoreMarkDoneViewTests(TestCase):
+    def setUp(self):
+        self.alex = Roommate.objects.create(name="Alex", color_code="#3B82F6", order_index=0, is_active=True)
+        self.sam = Roommate.objects.create(name="Sam", color_code="#10B981", order_index=1, is_active=True)
+        self.today = timezone.now().date()
+        self.chore = Chore.objects.create(
+            title="Clean windows",
+            recurrence_type=Chore.RecurrenceType.WEEKLY,
+            next_due_date=self.today - timedelta(days=5),
+            current_assignee=self.alex,
+        )
+        session = self.client.session
+        session["active_roommate_id"] = self.alex.id
+        session.save()
+
+    def test_mark_done_post_advances_chore_and_records_log(self):
+        url = reverse("chore_mark_done", args=[self.chore.id])
+        response = self.client.post(url)
+        self.assertRedirects(response, reverse("index"))
+
+        self.chore.refresh_from_db()
+        self.assertEqual(self.chore.current_assignee, self.sam)
+        self.assertEqual(self.chore.next_due_date, self.today + timedelta(days=7))
+
+        log = ChoreLog.objects.filter(chore=self.chore).first()
+        self.assertIsNotNone(log)
+        self.assertEqual(log.completed_by, self.alex)
+
+    def test_mark_done_post_by_different_active_roommate(self):
+        # Sam marks done instead of Alex
+        session = self.client.session
+        session["active_roommate_id"] = self.sam.id
+        session.save()
+
+        url = reverse("chore_mark_done", args=[self.chore.id])
+        response = self.client.post(url)
+        self.assertRedirects(response, reverse("index"))
+
+        log = ChoreLog.objects.filter(chore=self.chore).first()
+        self.assertIsNotNone(log)
+        self.assertEqual(log.completed_by, self.sam)
+
+    def test_mark_done_get_does_not_mutate_state(self):
+        url = reverse("chore_mark_done", args=[self.chore.id])
+        response = self.client.get(url)
+        self.assertRedirects(response, reverse("index"))
+
+        self.chore.refresh_from_db()
+        self.assertEqual(self.chore.current_assignee, self.alex)
+        self.assertEqual(self.chore.next_due_date, self.today - timedelta(days=5))
+        self.assertEqual(ChoreLog.objects.filter(chore=self.chore).count(), 0)
+
+    def test_dashboard_renders_mark_done_button(self):
+        response = self.client.get(reverse("index"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "✓ Mark Done")
+        self.assertContains(response, reverse("chore_mark_done", args=[self.chore.id]))
+
+
+
