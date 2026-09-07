@@ -1,4 +1,4 @@
-﻿# Development Process & Workflow
+# Development Process & Workflow
 
 This document outlines the AI-native development workflow for the **Flatmate Chore Manager** project, adhering to the AI Dev Tools Zoomcamp context-engineering principles.
 
@@ -6,7 +6,7 @@ This document outlines the AI-native development workflow for the **Flatmate Cho
 
 ## Core Principles
 
-1. **GitHub Issues as Single Source of Truth**: All tasks originate from GitHub issues defined in `_docs/backlog.md`.
+1. **GitHub Issues as Canonical Source of Truth**: GitHub Issues serve as the canonical source of truth for active tasks, while `_docs/backlog.md` is the documented reference backlog.
 2. **One Issue at a Time**: Work is strictly scoped to one issue per session. Never bundle multiple tasks or begin subsequent issues before the current one is completed, verified, and committed.
 3. **Strict Scope Discipline**: Implement only what the issue asks for. Do not introduce premature refactors, speculative utilities, or out-of-scope capabilities.
 4. **Environment Uniformity via `uv`**: All execution, dependency management, and testing must use `uv` rather than global Python or `pip`.
@@ -16,7 +16,7 @@ This document outlines the AI-native development workflow for the **Flatmate Cho
 ## Step-by-Step Task Lifecycle
 
 ### 1. Issue Selection & Context Loading
-- Pick the next open issue in sequential order from the repository backlog.
+- Select an open issue from GitHub Issues, respecting dependencies and scope.
 - Read the issue title, goal, and full description carefully.
 - Cross-reference relevant specifications in `_docs/plan.md` and data models in `_docs/architecture.md` to confirm requirements and interfaces before writing code.
 

@@ -37,6 +37,8 @@ Dividing chores among flatmates often leads to misunderstandings, forgotten task
 ```text
 flatmate-chore-manager/
 ├── manage.py
+├── pyproject.toml
+├── uv.lock
 ├── core/                   # Main chore tracking app
 │   ├── models.py           # Roommate, Chore, ChoreLog models
 │   ├── views.py            # Dashboard, mark_done, profile switcher
@@ -56,37 +58,33 @@ flatmate-chore-manager/
 
 ### Prerequisites
 - Python 3.10+
-- `pip`
+- [uv](https://docs.astral.sh/uv/)
 
-### Installation
+### Installation & Setup
 
-1. **Navigate to the project folder**:
+1. **Navigate to the project directory**:
    ```bash
-   cd "D:\Project directory\ai-devtools\flatmate-chore-manager"
+   cd flatmate-chore-manager
    ```
 
-2. **Create and activate a virtual environment**:
+2. **Sync dependencies**:
    ```bash
-   python -m venv venv
-   # Windows PowerShell:
-   .\venv\Scripts\Activate.ps1
-   # macOS/Linux:
-   source venv/bin/activate
+   uv sync
    ```
 
-3. **Install dependencies**:
+3. **Apply database migrations**:
    ```bash
-   pip install django
+   uv run python manage.py migrate
    ```
 
-4. **Apply database migrations**:
+4. **Run the development server**:
    ```bash
-   python manage.py migrate
+   uv run python manage.py runserver
    ```
 
-5. **Run the development server**:
+5. **Run test suite**:
    ```bash
-   python manage.py runserver
+   uv run python manage.py test
    ```
 
 6. **Open in browser**:
@@ -96,4 +94,4 @@ flatmate-chore-manager/
 
 ## Specification & Roadmap
 
-For full functional specifications, data models, and the implementation roadmap, refer to [_docs/plan.md](../_docs/plan.md).
+For full functional specifications, data models, and the implementation roadmap, refer to [_docs/plan.md](_docs/plan.md).
