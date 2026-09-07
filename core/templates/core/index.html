@@ -1,0 +1,25 @@
+﻿{% extends "core/base.html" %}
+
+{% block content %}
+<div class="bg-white shadow-sm rounded-xl border border-slate-200 p-8 text-center max-w-2xl mx-auto my-12">
+    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4" style="background-color: {{ active_roommate.color_code|default:'#E2E8F0' }}20;">
+        <span class="text-3xl">👋</span>
+    </div>
+    {% if active_roommate %}
+        <h1 class="text-2xl font-bold text-slate-900 mb-2">
+            Welcome back, <span style="color: {{ active_roommate.color_code }};">{{ active_roommate.name }}</span>!
+        </h1>
+        <p class="text-slate-600 text-sm mb-6">
+            You are currently viewing the household as <strong>{{ active_roommate.name }}</strong>. Use the profile switcher in the top navigation to switch identities anytime without logging in.
+        </p>
+    {% else %}
+        <h1 class="text-2xl font-bold text-slate-900 mb-2">Welcome to Flatmate Chore Manager</h1>
+        <p class="text-slate-600 text-sm mb-6">
+            No active roommates were found in the database. Run the database seed command to set up your household:
+        </p>
+        <code class="bg-slate-100 text-slate-800 px-3 py-1.5 rounded text-sm font-mono inline-block">
+            uv run python manage.py seed_data
+        </code>
+    {% endif %}
+</div>
+{% endblock %}

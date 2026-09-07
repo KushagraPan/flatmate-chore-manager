@@ -3,6 +3,7 @@ from io import StringIO
 from django.conf import settings
 from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase
+from django.urls import reverse
 from django.utils import timezone
 from core.models import Chore, ChoreLog, Roommate
 
@@ -170,4 +171,116 @@ class SeedDataCommandTests(TestCase):
 
         self.assertEqual(Roommate.objects.count(), 4)
         self.assertEqual(Chore.objects.count(), 4)
+
+
+class ProfileSwitcherTests(TestCase):
+    def setUp(self):
+        self.alex = Roommate.objects.create(name="Alex", order_index=0, is_active=True)
+        self.sam = Roommate.objects.create(name="Sam", order_index=1, is_active=True)
+        self.taylor = Roommate.objects.create(name="Taylor", order_index=2, is_active=False)
+
+    def test_redirect_to_select_roommate_when_no_session(self):
+        response = self.client.get(reverse("index"))
+        expected_url = f"{reverse('select_roommate')}?next={reverse('index')}"
+        self.assertRedirects(response, expected_url)
+
+    def test_select_roommate_page_renders_who_are_you_and_active_roommates(self):
+        response = self.client.get(reverse("select_roommate"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Who are you?")
+        self.assertContains(response, "Alex")
+        self.assertContains(response, "Sam")
+        self.assertNotContains(response, "Taylor")
+        self.assertIsNone(response.context["active_roommate"])
+        self.assertEqual(list(response.context["all_roommates"]), [self.alex, self.sam])
+
+    def test_select_roommate_post_sets_session_and_redirects_to_next(self):
+        target_url = reverse("index")
+        response = self.client.post(
+            reverse("select_roommate"),
+            {"roommate_id": self.alex.id, "next": target_url},
+        )
+        self.assertRedirects(response, target_url)
+        self.assertEqual(self.client.session.get("active_roommate_id"), self.alex.id)
+
+        # After selection, visiting index does not redirect and displays active roommate
+        follow_response = self.client.get(target_url)
+        self.assertEqual(follow_response.status_code, 200)
+        self.assertEqual(follow_response.context["active_roommate"], self.alex)
+
+    def test_switch_roommate_from_navbar_updates_session(self):
+        # Set session initially to Alex
+        session = self.client.session
+        session["active_roommate_id"] = self.alex.id
+        session.save()
+
+        response = self.client.post(
+            reverse("switch_roommate"),
+            {"roommate_id": self.sam.id, "next": reverse("index")},
+        )
+        self.assertRedirects(response, reverse("index"))
+        self.assertEqual(self.client.session.get("active_roommate_id"), self.sam.id)
+
+        follow_response = self.client.get(reverse("index"))
+        self.assertEqual(follow_response.context["active_roommate"], self.sam)
+
+    def test_switch_roommate_ignores_invalid_or_inactive_id(self):
+        # Set session initially to Alex
+        session = self.client.session
+        session["active_roommate_id"] = self.alex.id
+        session.save()
+
+        # Try switching to non-existent ID
+        self.client.post(reverse("switch_roommate"), {"roommate_id": 99999})
+        self.assertEqual(self.client.session.get("active_roommate_id"), self.alex.id)
+
+        # Try switching to inactive roommate
+        self.client.post(reverse("switch_roommate"), {"roommate_id": self.taylor.id})
+        self.assertEqual(self.client.session.get("active_roommate_id"), self.alex.id)
+
+        # Try switching to malformed input
+        self.client.post(reverse("switch_roommate"), {"roommate_id": "invalid"})
+        self.assertEqual(self.client.session.get("active_roommate_id"), self.alex.id)
+
+    def test_middleware_redirects_if_session_roommate_becomes_inactive(self):
+        # Set session to Sam
+        session = self.client.session
+        session["active_roommate_id"] = self.sam.id
+        session.save()
+
+        # Mark Sam as inactive
+        self.sam.is_active = False
+        self.sam.save()
+
+        response = self.client.get(reverse("index"))
+        expected_url = f"{reverse('select_roommate')}?next={reverse('index')}"
+        self.assertRedirects(response, expected_url)
+
+    def test_middleware_redirects_if_session_id_invalid(self):
+        session = self.client.session
+        session["active_roommate_id"] = 99999
+        session.save()
+
+        response = self.client.get(reverse("index"))
+        expected_url = f"{reverse('select_roommate')}?next={reverse('index')}"
+        self.assertRedirects(response, expected_url)
+
+    def test_no_redirect_loop_when_no_roommates_exist(self):
+        Roommate.objects.all().delete()
+        response = self.client.get(reverse("index"))
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context["active_roommate"])
+        self.assertEqual(list(response.context["all_roommates"]), [])
+
+    def test_navbar_renders_active_profile_and_options(self):
+        session = self.client.session
+        session["active_roommate_id"] = self.alex.id
+        session.save()
+
+        response = self.client.get(reverse("index"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Active: Alex")
+        self.assertContains(response, "Switch to Alex")
+        self.assertContains(response, "Switch to Sam")
+        self.assertNotContains(response, "Switch to Taylor")
 

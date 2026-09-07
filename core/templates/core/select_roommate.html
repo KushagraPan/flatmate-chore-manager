@@ -1,0 +1,54 @@
+﻿{% extends "core/base.html" %}
+
+{% block title %}Who are you? - Flatmate Chore Manager{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto my-12">
+    <div class="bg-white shadow-sm rounded-2xl border border-slate-200 p-8 text-center">
+        <!-- Icon -->
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-50 text-indigo-600 mb-4">
+            <span class="text-3xl">👤</span>
+        </div>
+
+        <h1 class="text-2xl font-extrabold text-slate-900 tracking-tight mb-2">
+            Who are you?
+        </h1>
+        <p class="text-slate-600 text-sm mb-8">
+            Select your profile to manage your chores and view household activity. No password needed!
+        </p>
+
+        {% if roommates %}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {% for roommate in roommates %}
+                    <form method="post" action="{% url 'select_roommate' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="roommate_id" value="{{ roommate.id }}">
+                        <input type="hidden" name="next" value="{{ next_url }}">
+                        <button type="submit" class="w-full flex items-center p-4 rounded-xl border-2 border-slate-200 hover:border-indigo-500 hover:shadow-md bg-white hover:bg-slate-50 transition text-left group cursor-pointer">
+                            <span class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-sm" style="background-color: {{ roommate.color_code }};">
+                                {{ roommate.name|slice:":1" }}
+                            </span>
+                            <div class="ml-4">
+                                <p class="text-base font-semibold text-slate-900 group-hover:text-indigo-600 transition">
+                                    {{ roommate.name }}
+                                </p>
+                                <p class="text-xs text-slate-500">
+                                    Click to select
+                                </p>
+                            </div>
+                        </button>
+                    </form>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center">
+                <p class="text-sm text-amber-800 mb-3">No active roommates found in the database.</p>
+                <p class="text-xs text-amber-600 mb-3">Run the seed command to create default roommates:</p>
+                <code class="bg-white text-slate-800 px-3 py-1.5 rounded text-xs font-mono inline-block border border-amber-200">
+                    uv run python manage.py seed_data
+                </code>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
