@@ -1,12 +1,13 @@
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
+from core.forms import ChoreForm
 from core.models import Chore, Roommate
 
 
 def index(request):
     """
     Main household dashboard displaying:
-    - 'my_chores': chores assigned to the active roommate
-    - 'all_chores': all chores across the household
+    - 'my_chores': active chores assigned to the active roommate
+    - 'all_chores': active chores across the household
     """
     active_roommate = getattr(request, "active_roommate", None)
     if not active_roommate:
@@ -17,7 +18,7 @@ def index(request):
             else None
         )
 
-    all_chores = Chore.objects.select_related("current_assignee").all()
+    all_chores = Chore.objects.filter(is_archived=False).select_related("current_assignee")
     my_chores = (
         all_chores.filter(current_assignee=active_roommate)
         if active_roommate
@@ -32,6 +33,59 @@ def index(request):
             "all_chores": all_chores,
         },
     )
+
+
+def chore_create(request):
+    """Create a new chore."""
+    if request.method == "POST":
+        form = ChoreForm(request.POST)
+        if form.is_valid():
+            form.save()
+            return redirect("index")
+    else:
+        form = ChoreForm()
+
+    return render(
+        request,
+        "core/chore_form.html",
+        {
+            "form": form,
+            "title": "Add New Chore",
+            "submit_btn_text": "Create Chore",
+        },
+    )
+
+
+def chore_edit(request, chore_id):
+    """Edit an existing chore."""
+    chore = get_object_or_404(Chore, id=chore_id)
+    if request.method == "POST":
+        form = ChoreForm(request.POST, instance=chore)
+        if form.is_valid():
+            form.save()
+            return redirect("index")
+    else:
+        form = ChoreForm(instance=chore)
+
+    return render(
+        request,
+        "core/chore_form.html",
+        {
+            "form": form,
+            "chore": chore,
+            "title": f"Edit Chore: {chore.title}",
+            "submit_btn_text": "Save Changes",
+        },
+    )
+
+
+def chore_archive(request, chore_id):
+    """Archive a chore so it stops appearing in rotation without being deleted."""
+    chore = get_object_or_404(Chore, id=chore_id)
+    if request.method == "POST":
+        chore.is_archived = True
+        chore.save()
+    return redirect("index")
 
 
 def select_roommate(request):

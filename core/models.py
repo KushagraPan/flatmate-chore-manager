@@ -37,6 +37,7 @@ class Chore(models.Model):
         blank=True,
         related_name="assigned_chores",
     )
+    is_archived = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["next_due_date", "id"]

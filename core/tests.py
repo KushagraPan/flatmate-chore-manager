@@ -5,6 +5,7 @@ from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import timezone
+from core.forms import ChoreForm
 from core.models import Chore, ChoreLog, Roommate
 
 
@@ -374,4 +375,135 @@ class DashboardViewTests(TestCase):
         self.assertContains(response, "Alex")
         self.assertContains(response, "Sam")
         self.assertContains(response, "Unassigned")
+
+
+class ChoreFormTests(TestCase):
+    def setUp(self):
+        self.active_roommate = Roommate.objects.create(name="Alex", is_active=True)
+        self.inactive_roommate = Roommate.objects.create(name="Taylor", is_active=False)
+
+    def test_chore_form_valid_data(self):
+        form = ChoreForm(
+            data={
+                "title": "Clean kitchen",
+                "description": "Wipe surfaces",
+                "recurrence_type": Chore.RecurrenceType.WEEKLY,
+                "current_assignee": self.active_roommate.id,
+                "next_due_date": date.today(),
+            }
+        )
+        self.assertTrue(form.is_valid())
+
+    def test_chore_form_missing_required_fields(self):
+        form = ChoreForm(data={})
+        self.assertFalse(form.is_valid())
+        self.assertIn("title", form.errors)
+        self.assertIn("next_due_date", form.errors)
+
+    def test_chore_form_assignee_queryset_excludes_inactive(self):
+        form = ChoreForm()
+        assignees = list(form.fields["current_assignee"].queryset)
+        self.assertIn(self.active_roommate, assignees)
+        self.assertNotIn(self.inactive_roommate, assignees)
+
+
+class ChoreCRUDViewTests(TestCase):
+    def setUp(self):
+        self.alex = Roommate.objects.create(name="Alex", color_code="#3B82F6", order_index=0, is_active=True)
+        self.sam = Roommate.objects.create(name="Sam", color_code="#10B981", order_index=1, is_active=True)
+        session = self.client.session
+        session["active_roommate_id"] = self.alex.id
+        session.save()
+
+    def test_chore_create_get(self):
+        response = self.client.get(reverse("chore_create"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Add New Chore")
+        self.assertIsInstance(response.context["form"], ChoreForm)
+
+    def test_chore_create_post_valid(self):
+        due = date.today() + timedelta(days=3)
+        response = self.client.post(
+            reverse("chore_create"),
+            {
+                "title": "Scrub bathtub",
+                "description": "Use tub cleaner",
+                "recurrence_type": Chore.RecurrenceType.BIWEEKLY,
+                "current_assignee": self.sam.id,
+                "next_due_date": due.strftime("%Y-%m-%d"),
+            },
+        )
+        self.assertRedirects(response, reverse("index"))
+        self.assertTrue(Chore.objects.filter(title="Scrub bathtub", current_assignee=self.sam).exists())
+
+    def test_chore_create_post_invalid(self):
+        response = self.client.post(
+            reverse("chore_create"),
+            {
+                "title": "",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["form"].errors)
+        self.assertEqual(Chore.objects.count(), 0)
+
+    def test_chore_edit_get(self):
+        chore = Chore.objects.create(
+            title="Clean stove",
+            recurrence_type=Chore.RecurrenceType.WEEKLY,
+            next_due_date=date.today(),
+            current_assignee=self.alex,
+        )
+        response = self.client.get(reverse("chore_edit", args=[chore.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Edit Chore: Clean stove")
+        self.assertContains(response, "Clean stove")
+
+    def test_chore_edit_post_valid(self):
+        chore = Chore.objects.create(
+            title="Clean stove",
+            description="Old desc",
+            recurrence_type=Chore.RecurrenceType.WEEKLY,
+            next_due_date=date.today(),
+            current_assignee=self.alex,
+        )
+        new_due = date.today() + timedelta(days=5)
+        response = self.client.post(
+            reverse("chore_edit", args=[chore.id]),
+            {
+                "title": "Clean stove & oven",
+                "description": "Updated desc",
+                "recurrence_type": Chore.RecurrenceType.MONTHLY,
+                "current_assignee": self.sam.id,
+                "next_due_date": new_due.strftime("%Y-%m-%d"),
+            },
+        )
+        self.assertRedirects(response, reverse("index"))
+        chore.refresh_from_db()
+        self.assertEqual(chore.title, "Clean stove & oven")
+        self.assertEqual(chore.description, "Updated desc")
+        self.assertEqual(chore.recurrence_type, Chore.RecurrenceType.MONTHLY)
+        self.assertEqual(chore.current_assignee, self.sam)
+        self.assertEqual(chore.next_due_date, new_due)
+
+    def test_chore_archive_post(self):
+        chore = Chore.objects.create(
+            title="Old temporary task",
+            recurrence_type=Chore.RecurrenceType.WEEKLY,
+            next_due_date=date.today(),
+            current_assignee=self.alex,
+        )
+        self.assertFalse(chore.is_archived)
+
+        response = self.client.post(reverse("chore_archive", args=[chore.id]))
+        self.assertRedirects(response, reverse("index"))
+        chore.refresh_from_db()
+        self.assertTrue(chore.is_archived)
+
+        # Verify it no longer appears in active dashboard lists
+        dashboard_res = self.client.get(reverse("index"))
+        self.assertNotIn(chore, dashboard_res.context["my_chores"])
+        self.assertNotIn(chore, dashboard_res.context["all_chores"])
+        self.assertNotContains(dashboard_res, "Old temporary task")
+
 
