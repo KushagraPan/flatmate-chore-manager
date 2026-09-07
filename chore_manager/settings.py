@@ -25,7 +25,12 @@ SECRET_KEY = 'django-insecure-i5&7q&&tv*g%&0*og&m=lm%t)-qh!)a_d1^m_(f7g#ja$&0tkq
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    'flatmate-chore-manager.onrender.com',
+    'localhost',
+    '127.0.0.1',
+    '[::1]',
+]
 
 
 # Application definition
