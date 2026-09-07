@@ -1,5 +1,7 @@
 from datetime import date, timedelta
+from io import StringIO
 from django.conf import settings
+from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from core.models import Chore, ChoreLog, Roommate
@@ -132,4 +134,40 @@ class ChoreLogModelTests(TestCase):
         self.assertEqual(ChoreLog.objects.count(), 1)
         self.roommate.delete()
         self.assertEqual(ChoreLog.objects.count(), 0)
+
+
+class SeedDataCommandTests(TestCase):
+    def test_seed_data_populates_expected_models(self):
+        out = StringIO()
+        call_command("seed_data", stdout=out)
+        self.assertIn("Successfully seeded default household data.", out.getvalue())
+
+        self.assertEqual(Roommate.objects.count(), 4)
+        self.assertEqual(Chore.objects.count(), 4)
+
+        # Check all recurrence types exist
+        recurrence_types = set(Chore.objects.values_list("recurrence_type", flat=True))
+        self.assertEqual(
+            recurrence_types,
+            {
+                Chore.RecurrenceType.DAILY,
+                Chore.RecurrenceType.WEEKLY,
+                Chore.RecurrenceType.BIWEEKLY,
+                Chore.RecurrenceType.MONTHLY,
+            },
+        )
+
+        # Check assignees are assigned and active
+        for chore in Chore.objects.all():
+            self.assertIsNotNone(chore.current_assignee)
+            self.assertTrue(chore.current_assignee.is_active)
+
+    def test_seed_data_is_idempotent(self):
+        out1 = StringIO()
+        out2 = StringIO()
+        call_command("seed_data", stdout=out1)
+        call_command("seed_data", stdout=out2)
+
+        self.assertEqual(Roommate.objects.count(), 4)
+        self.assertEqual(Chore.objects.count(), 4)
 
