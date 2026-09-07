@@ -1,4 +1,4 @@
-﻿# AGENTS.md
+# AGENTS.md
 
 ## Project Overview
 The **Flatmate Chore Manager** is a lightweight, web-based household chore tracking application built with **Django**, **SQLite**, and **Tailwind CSS** (via CDN). Its core purpose is to eliminate roommate friction by providing:
@@ -20,22 +20,23 @@ The **Flatmate Chore Manager** is a lightweight, web-based household chore track
 - **Framework**: Django 5.x
 - **Database**: SQLite (`db.sqlite3`)
 - **Frontend**: Server-rendered Django Templates + Tailwind CSS (CDN)
-- **Package & Environment Manager**: `uv` (do not use raw `pip` or standard `python -m venv`)
+- **Package & Environment Manager**: `uv` exclusively (`pyproject.toml` and `uv.lock`)
 
 ---
 
 ## Essential Commands
-Always use `uv run` to execute commands within the project environment:
+Dependency and environment management is handled exclusively via `uv`. Execute all commands using `uv run` without activating a virtual environment:
 
 | Action | Command |
 | :--- | :--- |
+| **Sync Dependencies** | `uv sync` |
+| **Add Dependency** | `uv add <package>` |
 | **Run Test Suite** | `uv run python manage.py test` |
 | **Django System Check** | `uv run python manage.py check` |
 | **Start Dev Server** | `uv run python manage.py runserver` |
 | **Make Migrations** | `uv run python manage.py makemigrations` |
 | **Apply Migrations** | `uv run python manage.py migrate` |
 | **Django Shell** | `uv run python manage.py shell` |
-| **Add Dependency** | `uv add <package>` |
 
 ---
 
@@ -44,7 +45,7 @@ Always use `uv run` to execute commands within the project environment:
 2. **Strict Scope Control**: Do not add unrequested features or over-engineer abstractions. Keep models and views aligned with `_docs/architecture.md`.
 3. **No Auth Inventions**: Keep roommate identity purely session-driven. Never introduce authentication models, login redirects, or password fields.
 4. **Test-First Verification**: Every change must maintain or increase test coverage. Run `uv run python manage.py test` before and after modifications.
-5. **Dependency Integrity**: Use `uv` exclusively. Never commit unmanaged dependencies or bypass `uv.lock`.
+5. **Dependency Integrity**: Use `uv` exclusively (`uv sync`, `uv add`, `uv run`). Manage dependencies solely through `pyproject.toml` and `uv.lock`. Never introduce unmanaged dependencies or use `pip`/`venv`.
 
 ---
 
